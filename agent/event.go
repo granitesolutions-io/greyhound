@@ -1,4 +1,4 @@
-package greyhound
+package agent
 
 // EventType identifies the kind of streaming event from Claude CLI.
 type EventType string

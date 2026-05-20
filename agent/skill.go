@@ -1,4 +1,4 @@
-package greyhound
+package agent
 
 import (
 	"bytes"
