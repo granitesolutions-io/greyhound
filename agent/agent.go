@@ -23,6 +23,9 @@ type Agent struct {
 	// MCPServers configures MCP servers to attach to the Claude session.
 	MCPServers []MCPServer
 
+	// SessionID, when set, resumes an existing Claude conversation via --resume.
+	SessionID string
+
 	// LogWriter receives raw log output. If nil, logging is discarded.
 	LogWriter io.Writer
 
@@ -70,6 +73,9 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 	}
 	if mcpConfigPath != "" {
 		args = append(args, "--mcp-config", mcpConfigPath)
+	}
+	if a.SessionID != "" {
+		args = append(args, "--resume", a.SessionID)
 	}
 
 	cmd := exec.Command("claude", args...)
@@ -120,10 +126,15 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 			continue
 		}
 
+		// Capture session ID from any event that carries one
+		if event.SessionID != "" {
+			sessionID = event.SessionID
+		}
+
 		switch event.Type {
 		case "system":
 			if event.Subtype == "init" {
-				a.emit(Event{Type: EventInit})
+				a.emit(Event{Type: EventInit, SessionID: event.SessionID})
 			}
 
 		case "assistant":
@@ -150,9 +161,6 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 			}
 
 		case "result":
-			if event.SessionID != "" {
-				sessionID = event.SessionID
-			}
 			if event.Result.Text != "" {
 				finalText.WriteString(event.Result.Text)
 			}
