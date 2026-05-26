@@ -1,4 +1,4 @@
-package agent
+package conversations
 
 import (
 	"encoding/json"
@@ -7,14 +7,14 @@ import (
 	"github.com/granitesolutions-io/greyhound/storage"
 )
 
-// S3ConversationStore persists conversations to an S3-compatible backend.
-type S3ConversationStore struct {
+// S3Store persists conversations to an S3-compatible backend.
+type S3Store struct {
 	store storage.Store
 }
 
-// NewS3ConversationStore creates a conversation store backed by the given storage.Store.
-func NewS3ConversationStore(store storage.Store) *S3ConversationStore {
-	return &S3ConversationStore{store: store}
+// NewS3Store creates a conversation store backed by the given storage.Store.
+func NewS3Store(store storage.Store) *S3Store {
+	return &S3Store{store: store}
 }
 
 func conversationKey(id string) string {
@@ -22,7 +22,7 @@ func conversationKey(id string) string {
 }
 
 // Create allocates a new Conversation with a generated UUID and persists it.
-func (s *S3ConversationStore) Create() (*Conversation, error) {
+func (s *S3Store) Create() (*Conversation, error) {
 	conv := &Conversation{ID: newUUID()}
 
 	data, err := json.Marshal(conv)
@@ -38,7 +38,7 @@ func (s *S3ConversationStore) Create() (*Conversation, error) {
 }
 
 // Get retrieves a conversation by ID. Returns nil, nil if not found.
-func (s *S3ConversationStore) Get(id string) (*Conversation, error) {
+func (s *S3Store) Get(id string) (*Conversation, error) {
 	key := conversationKey(id)
 
 	exists, err := s.store.Exists(key)
@@ -63,7 +63,7 @@ func (s *S3ConversationStore) Get(id string) (*Conversation, error) {
 }
 
 // Save persists the conversation to S3.
-func (s *S3ConversationStore) Save(conv *Conversation) error {
+func (s *S3Store) Save(conv *Conversation) error {
 	data, err := json.Marshal(conv)
 	if err != nil {
 		return fmt.Errorf("conversation: marshal: %w", err)
