@@ -187,10 +187,12 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 			}
 
 		case "result":
-			if event.Result.Text != "" {
-				finalText.WriteString(event.Result.Text)
+			if event.IsError {
+				nonJSON.WriteString(event.Result)
+			} else if event.Result != "" {
+				finalText.WriteString(event.Result)
 			}
-			a.emit(Event{Type: EventResult, Text: event.Result.Text, SessionID: event.SessionID})
+			a.emit(Event{Type: EventResult, Text: event.Result, SessionID: event.SessionID})
 
 		case "user":
 			for _, content := range event.Message.Content {
@@ -259,9 +261,8 @@ type streamEvent struct {
 		} `json:"content"`
 	} `json:"message"`
 	SessionID string `json:"session_id,omitempty"`
-	Result    struct {
-		Text string `json:"text,omitempty"`
-	} `json:"result"`
+	IsError   bool   `json:"is_error,omitempty"`
+	Result    string `json:"result,omitempty"`
 }
 
 // writeMCPConfig creates a temporary MCP config file for the Claude CLI.
