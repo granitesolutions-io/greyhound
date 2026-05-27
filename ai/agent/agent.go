@@ -26,6 +26,13 @@ type Agent struct {
 	// SessionID, when set, resumes an existing Claude conversation via --resume.
 	SessionID string
 
+	// Model specifies the Claude model to use (e.g. "claude-sonnet-4-20250514").
+	// If empty, the CLI default is used.
+	Model string
+
+	// MaxTurns limits the number of agentic tool-use turns. Zero means unlimited.
+	MaxTurns int
+
 	// LogWriter receives raw log output. If nil, logging is discarded.
 	LogWriter io.Writer
 
@@ -76,6 +83,12 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 	}
 	if a.SessionID != "" {
 		args = append(args, "--resume", a.SessionID)
+	}
+	if a.Model != "" {
+		args = append(args, "--model", a.Model)
+	}
+	if a.MaxTurns > 0 {
+		args = append(args, "--max-turns", fmt.Sprintf("%d", a.MaxTurns))
 	}
 
 	cmd := exec.Command("claude", args...)
@@ -167,7 +180,15 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 			a.emit(Event{Type: EventResult, Text: event.Result.Text, SessionID: event.SessionID})
 
 		case "user":
-			a.emit(Event{Type: EventToolResult})
+			for _, content := range event.Message.Content {
+				if content.Type == "tool_result" {
+					a.emit(Event{
+						Type:       EventToolResult,
+						ToolOutput: content.Content,
+						ToolError:  content.IsError,
+					})
+				}
+			}
 		}
 	}
 
@@ -208,10 +229,12 @@ type streamEvent struct {
 	Subtype string `json:"subtype"`
 	Message struct {
 		Content []struct {
-			Type  string          `json:"type"`
-			Text  string          `json:"text"`
-			Name  string          `json:"name"`
-			Input json.RawMessage `json:"input"`
+			Type    string          `json:"type"`
+			Text    string          `json:"text"`
+			Name    string          `json:"name"`
+			Input   json.RawMessage `json:"input"`
+			Content string          `json:"content"`
+			IsError bool            `json:"is_error"`
 		} `json:"content"`
 	} `json:"message"`
 	SessionID string `json:"session_id,omitempty"`

@@ -25,9 +25,11 @@ const (
 
 // Event represents a single streaming event from the Claude CLI.
 type Event struct {
-	Type      EventType
-	Text      string
-	ToolName  string
-	ToolInput string
-	SessionID string
+	Type       EventType
+	Text       string
+	ToolName   string
+	ToolInput  string
+	ToolOutput string
+	ToolError  bool
+	SessionID  string
 }
