@@ -131,6 +131,7 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 	a.logf("Claude started (PID %d)", cmd.Process.Pid)
 
 	var finalText strings.Builder
+	var nonJSON strings.Builder
 	var sessionID string
 
 	// Parse stream-json events
@@ -145,6 +146,9 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 
 		var event streamEvent
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			// Capture non-JSON output for error reporting
+			nonJSON.WriteString(line)
+			nonJSON.WriteString("\n")
 			continue
 		}
 
@@ -205,8 +209,16 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 
 	if cmdErr != nil {
 		stderrStr := strings.TrimSpace(stderrBuf.String())
-		if stderrStr != "" {
-			return nil, fmt.Errorf("claude exited with error: %w\nstderr: %s", cmdErr, stderrStr)
+		nonJSONStr := strings.TrimSpace(nonJSON.String())
+		details := stderrStr
+		if nonJSONStr != "" {
+			if details != "" {
+				details += "\n"
+			}
+			details += nonJSONStr
+		}
+		if details != "" {
+			return nil, fmt.Errorf("claude exited with error: %w\n%s", cmdErr, details)
 		}
 		return nil, fmt.Errorf("claude exited with error: %w", cmdErr)
 	}
