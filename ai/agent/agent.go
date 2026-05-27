@@ -33,6 +33,10 @@ type Agent struct {
 	// MaxTurns limits the number of agentic tool-use turns. Zero means unlimited.
 	MaxTurns int
 
+	// Token is the Claude OAuth token for CLI authentication.
+	// If set, it is passed as CLAUDE_CODE_OAUTH_TOKEN to the subprocess.
+	Token string
+
 	// LogWriter receives raw log output. If nil, logging is discarded.
 	LogWriter io.Writer
 
@@ -97,6 +101,11 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 
 	// Clear CLAUDECODE env var to prevent nested session conflicts
 	cmd.Env = filterEnv(os.Environ(), "CLAUDECODE")
+
+	// Set Claude OAuth token if provided
+	if a.Token != "" {
+		cmd.Env = append(cmd.Env, "CLAUDE_CODE_OAUTH_TOKEN="+a.Token)
+	}
 
 	var stderrBuf bytes.Buffer
 	if a.LogWriter != nil {
