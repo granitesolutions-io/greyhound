@@ -37,10 +37,10 @@ type Agent struct {
 	// If set, it is passed as CLAUDE_CODE_OAUTH_TOKEN to the subprocess.
 	Token string
 
-	// History holds prior conversation messages for context replay.
-	// When SessionID is set but the session is stale, the agent automatically
-	// retries without --resume and prepends History to the prompt.
-	History []HistoryMessage
+	// History, when set, provides conversation history on demand.
+	// It is only called when a stale session is detected and history
+	// replay is needed — not on every request.
+	History HistoryProvider
 
 	// LogWriter receives raw log output. If nil, logging is discarded.
 	LogWriter io.Writer
@@ -49,6 +49,18 @@ type Agent struct {
 	// If nil, events are silently consumed.
 	OnEvent func(Event)
 }
+
+// HistoryProvider loads conversation history on demand.
+// It is only called when a stale session is detected and history replay is needed.
+type HistoryProvider interface {
+	LoadHistory() []HistoryMessage
+}
+
+// HistoryFunc is a function that implements HistoryProvider.
+type HistoryFunc func() []HistoryMessage
+
+// LoadHistory calls the function.
+func (f HistoryFunc) LoadHistory() []HistoryMessage { return f() }
 
 // HistoryMessage is a role/content pair for conversation history.
 type HistoryMessage struct {
@@ -83,12 +95,14 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 		// Stale session — retry without --resume, replaying history
 		a.logf("Stale session %s, retrying with conversation history", a.SessionID)
 		retryPrompt := prompt
-		if len(a.History) > 0 {
-			var history string
-			for _, m := range a.History {
-				history += fmt.Sprintf("[%s]: %s\n\n", m.Role, m.Content)
+		if a.History != nil {
+			if messages := a.History.LoadHistory(); len(messages) > 0 {
+				var history string
+				for _, m := range messages {
+					history += fmt.Sprintf("[%s]: %s\n\n", m.Role, m.Content)
+				}
+				retryPrompt = "Here is the conversation so far:\n\n" + history + "Now continue the conversation. " + prompt
 			}
-			retryPrompt = "Here is the conversation so far:\n\n" + history + "Now continue the conversation. " + prompt
 		}
 		return a.run(retryPrompt, "")
 	}
