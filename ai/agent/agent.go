@@ -37,12 +37,23 @@ type Agent struct {
 	// If set, it is passed as CLAUDE_CODE_OAUTH_TOKEN to the subprocess.
 	Token string
 
+	// History holds prior conversation messages for context replay.
+	// When SessionID is set but the session is stale, the agent automatically
+	// retries without --resume and prepends History to the prompt.
+	History []HistoryMessage
+
 	// LogWriter receives raw log output. If nil, logging is discarded.
 	LogWriter io.Writer
 
 	// OnEvent is called for each streaming event from Claude CLI.
 	// If nil, events are silently consumed.
 	OnEvent func(Event)
+}
+
+// HistoryMessage is a role/content pair for conversation history.
+type HistoryMessage struct {
+	Role    string
+	Content string
 }
 
 // MCPServer describes an MCP server to attach to a Claude session.
@@ -63,8 +74,29 @@ type Result struct {
 }
 
 // Run invokes the Claude CLI with the given prompt, streams events, and returns
-// the accumulated text output.
+// the accumulated text output. If SessionID is set but the session is stale
+// (e.g. after a redeployment), Run automatically retries without --resume and
+// prepends History to the prompt for context continuity.
 func (a *Agent) Run(prompt string) (*Result, error) {
+	result, err := a.run(prompt, a.SessionID)
+	if err != nil && a.SessionID != "" && strings.Contains(err.Error(), "No conversation found") {
+		// Stale session — retry without --resume, replaying history
+		a.logf("Stale session %s, retrying with conversation history", a.SessionID)
+		retryPrompt := prompt
+		if len(a.History) > 0 {
+			var history string
+			for _, m := range a.History {
+				history += fmt.Sprintf("[%s]: %s\n\n", m.Role, m.Content)
+			}
+			retryPrompt = "Here is the conversation so far:\n\n" + history + "Now continue the conversation. " + prompt
+		}
+		return a.run(retryPrompt, "")
+	}
+	return result, err
+}
+
+// run executes a single Claude CLI invocation with the given prompt and session ID.
+func (a *Agent) run(prompt string, sessionID string) (*Result, error) {
 	// Write MCP config if servers are configured
 	var mcpConfigPath string
 	if len(a.MCPServers) > 0 {
@@ -85,8 +117,8 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 	if mcpConfigPath != "" {
 		args = append(args, "--mcp-config", mcpConfigPath)
 	}
-	if a.SessionID != "" {
-		args = append(args, "--resume", a.SessionID)
+	if sessionID != "" {
+		args = append(args, "--resume", sessionID)
 	}
 	if a.Model != "" {
 		args = append(args, "--model", a.Model)
@@ -132,7 +164,7 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 
 	var finalText strings.Builder
 	var nonJSON strings.Builder
-	var sessionID string
+	var resultSessionID string
 
 	// Parse stream-json events
 	scanner := bufio.NewScanner(stdout)
@@ -154,7 +186,7 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 
 		// Capture session ID from any event that carries one
 		if event.SessionID != "" {
-			sessionID = event.SessionID
+			resultSessionID = event.SessionID
 		}
 
 		switch event.Type {
@@ -227,7 +259,7 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 
 	return &Result{
 		Output:    finalText.String(),
-		SessionID: sessionID,
+		SessionID: resultSessionID,
 	}, nil
 }
 
