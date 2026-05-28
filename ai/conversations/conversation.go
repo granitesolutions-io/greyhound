@@ -18,6 +18,7 @@ type Conversation struct {
 	ID        string    `json:"id"`
 	SessionID string    `json:"session_id"` // Claude CLI session ID (set after first Run)
 	Messages  []Message `json:"messages"`
+	TotalCost float64   `json:"total_cost"` // accumulated cost in USD across all messages
 }
 
 // Store is the interface for conversation persistence.

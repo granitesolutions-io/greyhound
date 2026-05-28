@@ -224,10 +224,7 @@ func (a *Agent) run(prompt string, sessionID string) (*Result, error) {
 			if event.Message.Model != "" {
 				model = event.Message.Model
 			}
-			totalUsage.InputTokens += event.Message.Usage.InputTokens
-			totalUsage.OutputTokens += event.Message.Usage.OutputTokens
-			totalUsage.CacheCreationInputTokens += event.Message.Usage.CacheCreationInputTokens
-			totalUsage.CacheReadInputTokens += event.Message.Usage.CacheReadInputTokens
+			totalUsage = totalUsage.Add(event.Message.Usage)
 
 			for _, content := range event.Message.Content {
 				switch content.Type {
