@@ -83,6 +83,15 @@ type Result struct {
 
 	// SessionID is the Claude session identifier.
 	SessionID string
+
+	// Usage holds the accumulated token usage across all turns.
+	Usage Usage
+
+	// Model is the model that was used for the response.
+	Model string
+
+	// Cost is the estimated cost in USD for this invocation.
+	Cost float64
 }
 
 // Run invokes the Claude CLI with the given prompt, streams events, and returns
@@ -179,6 +188,8 @@ func (a *Agent) run(prompt string, sessionID string) (*Result, error) {
 	var finalText strings.Builder
 	var nonJSON strings.Builder
 	var resultSessionID string
+	var totalUsage Usage
+	var model string
 
 	// Parse stream-json events
 	scanner := bufio.NewScanner(stdout)
@@ -210,6 +221,14 @@ func (a *Agent) run(prompt string, sessionID string) (*Result, error) {
 			}
 
 		case "assistant":
+			if event.Message.Model != "" {
+				model = event.Message.Model
+			}
+			totalUsage.InputTokens += event.Message.Usage.InputTokens
+			totalUsage.OutputTokens += event.Message.Usage.OutputTokens
+			totalUsage.CacheCreationInputTokens += event.Message.Usage.CacheCreationInputTokens
+			totalUsage.CacheReadInputTokens += event.Message.Usage.CacheReadInputTokens
+
 			for _, content := range event.Message.Content {
 				switch content.Type {
 				case "text":
@@ -274,6 +293,9 @@ func (a *Agent) run(prompt string, sessionID string) (*Result, error) {
 	return &Result{
 		Output:    finalText.String(),
 		SessionID: resultSessionID,
+		Usage:     totalUsage,
+		Model:     model,
+		Cost:      totalUsage.Cost(model),
 	}, nil
 }
 
@@ -297,6 +319,7 @@ type streamEvent struct {
 	Type    string `json:"type"`
 	Subtype string `json:"subtype"`
 	Message struct {
+		Model   string `json:"model"`
 		Content []struct {
 			Type    string          `json:"type"`
 			Text    string          `json:"text"`
@@ -305,6 +328,7 @@ type streamEvent struct {
 			Content string          `json:"content"`
 			IsError bool            `json:"is_error"`
 		} `json:"content"`
+		Usage Usage `json:"usage"`
 	} `json:"message"`
 	SessionID string `json:"session_id,omitempty"`
 	IsError   bool   `json:"is_error,omitempty"`
