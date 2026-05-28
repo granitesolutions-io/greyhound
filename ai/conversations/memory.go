@@ -40,3 +40,12 @@ func (s *MemoryStore) Save(conv *Conversation) error {
 	s.conversations[conv.ID] = conv
 	return nil
 }
+
+// AddMessage appends a message to the conversation and updates the total cost.
+func (s *MemoryStore) AddMessage(conv *Conversation, msg Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	conv.Messages = append(conv.Messages, msg)
+	conv.TotalCost = msg.TotalCost
+	return nil
+}
