@@ -15,6 +15,7 @@ type Message struct {
 	Content   string   `json:"content"` // kept for HistoryProvider compat
 	User      string   `json:"user"`
 	Assistant string   `json:"assistant"`
+	Response  string   `json:"response"` // clean response for display (last text block)
 	Cost      float64  `json:"cost"`
 	TotalCost float64  `json:"total_cost"`
 	Usage     ai.Usage `json:"usage"`
