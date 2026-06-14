@@ -71,9 +71,10 @@ type HistoryMessage struct {
 // MCPServer describes an MCP server to attach to a Claude session.
 type MCPServer struct {
 	Name    string
-	Command string
-	Args    []string
-	Env     map[string]string
+	Command string            // subprocess mode
+	Args    []string          // subprocess mode
+	Env     map[string]string // subprocess mode
+	URL     string            // HTTP mode — if set, Command/Args/Env ignored
 }
 
 // Result holds the output from a Claude CLI invocation.
@@ -336,14 +337,18 @@ type streamEvent struct {
 func writeMCPConfig(servers []MCPServer, dir string) (string, error) {
 	mcpServers := make(map[string]interface{})
 	for _, s := range servers {
-		entry := map[string]interface{}{
-			"command": s.Command,
-			"args":    s.Args,
+		if s.URL != "" {
+			mcpServers[s.Name] = map[string]interface{}{"type": "http", "url": s.URL}
+		} else {
+			entry := map[string]interface{}{
+				"command": s.Command,
+				"args":    s.Args,
+			}
+			if len(s.Env) > 0 {
+				entry["env"] = s.Env
+			}
+			mcpServers[s.Name] = entry
 		}
-		if len(s.Env) > 0 {
-			entry["env"] = s.Env
-		}
-		mcpServers[s.Name] = entry
 	}
 
 	config := map[string]interface{}{

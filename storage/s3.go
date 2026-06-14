@@ -172,7 +172,6 @@ func (s *S3Store) List(prefix string) ([]string, error) {
 	// Include "directories" (common prefixes)
 	for _, cp := range out.CommonPrefixes {
 		key := strings.TrimPrefix(*cp.Prefix, s.prefix+"/")
-		key = strings.TrimRight(key, "/")
 		keys = append(keys, key)
 	}
 	// Include files at this level
@@ -182,4 +181,53 @@ func (s *S3Store) List(prefix string) ([]string, error) {
 	}
 
 	return keys, nil
+}
+
+func (s *S3Store) Stat(key string) (*ItemInfo, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Try HeadObject first (file).
+	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(s.key(key)),
+	})
+	if err == nil {
+		modTime := time.Time{}
+		if out.LastModified != nil {
+			modTime = *out.LastModified
+		}
+		size := int64(0)
+		if out.ContentLength != nil {
+			size = *out.ContentLength
+		}
+		return &ItemInfo{
+			Key:     key,
+			Size:    size,
+			ModTime: modTime,
+			IsDir:   false,
+		}, nil
+	}
+
+	// Fallback: check if it's a directory prefix.
+	prefix := s.key(key)
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+	listOut, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket:  aws.String(s.bucket),
+		Prefix:  aws.String(prefix),
+		MaxKeys: aws.Int32(1),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("storage: stat %q: %w", key, err)
+	}
+	if len(listOut.Contents) > 0 || len(listOut.CommonPrefixes) > 0 {
+		return &ItemInfo{
+			Key:   key,
+			IsDir: true,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("storage: stat %q: not found", key)
 }

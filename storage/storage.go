@@ -1,6 +1,17 @@
 package storage
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
+
+// ItemInfo holds metadata about a storage item.
+type ItemInfo struct {
+	Key     string
+	Size    int64
+	ModTime time.Time
+	IsDir   bool
+}
 
 // Store is the interface for key-value storage backends.
 type Store interface {
@@ -9,6 +20,7 @@ type Store interface {
 	Delete(key string) error
 	Exists(key string) (bool, error)
 	List(prefix string) ([]string, error)
+	Stat(key string) (*ItemInfo, error)
 }
 
 // Config holds storage backend configuration.

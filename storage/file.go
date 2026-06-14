@@ -69,8 +69,25 @@ func (f *FileStore) List(prefix string) ([]string, error) {
 
 	var keys []string
 	for _, e := range entries {
-		key := prefix + "/" + e.Name()
+		name := e.Name()
+		if e.IsDir() {
+			name += "/"
+		}
+		key := prefix + "/" + name
 		keys = append(keys, strings.TrimPrefix(key, "/"))
 	}
 	return keys, nil
+}
+
+func (f *FileStore) Stat(key string) (*ItemInfo, error) {
+	info, err := os.Stat(f.path(key))
+	if err != nil {
+		return nil, err
+	}
+	return &ItemInfo{
+		Key:     key,
+		Size:    info.Size(),
+		ModTime: info.ModTime(),
+		IsDir:   info.IsDir(),
+	}, nil
 }

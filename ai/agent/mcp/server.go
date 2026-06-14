@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
 )
 
@@ -100,7 +103,7 @@ type tool struct {
 	Handler    ToolHandler
 }
 
-// Server is a minimal MCP server using stdio JSON-RPC 2.0 transport.
+// Server is a minimal MCP server supporting both stdio and HTTP JSON-RPC 2.0 transports.
 type Server struct {
 	name    string
 	version string
@@ -146,22 +149,80 @@ func (s *Server) Run() error {
 		var req jsonRPCRequest
 		if err := json.Unmarshal([]byte(line), &req); err != nil {
 			fmt.Fprintf(os.Stderr, "[mcp] parse error: %s\n", err)
-			s.writeError(nil, -32700, "Parse error")
+			resp := s.makeError(nil, -32700, "Parse error")
+			data, _ := json.Marshal(resp)
+			fmt.Fprintln(os.Stdout, string(data))
 			continue
 		}
 
 		fmt.Fprintf(os.Stderr, "[mcp] method: %s\n", req.Method)
-		s.handleRequest(req)
+		resp := s.handleRequest(req)
+		if resp != nil {
+			data, _ := json.Marshal(resp)
+			fmt.Fprintln(os.Stdout, string(data))
+		}
 	}
 
 	fmt.Fprintln(os.Stderr, "[mcp] stdin closed, shutting down")
 	return scanner.Err()
 }
 
-func (s *Server) handleRequest(req jsonRPCRequest) {
+// HandleHTTP implements the MCP Streamable HTTP transport (2025-03-26 spec).
+// It accepts POST requests with JSON-RPC bodies and returns JSON responses.
+// GET requests return 405 (no server-initiated SSE stream).
+// DELETE requests return 405 (no session termination support).
+// Only accepts requests from localhost to prevent remote access.
+func (s *Server) HandleHTTP(w http.ResponseWriter, r *http.Request) {
+	// Only accept requests from localhost
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err != nil || !isLoopback(host) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	if r.Method == http.MethodGet || r.Method == http.MethodDelete {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	var req jsonRPCRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		resp := s.makeError(nil, -32700, "Parse error")
+		data, _ := json.Marshal(resp)
+		w.Write(data)
+		return
+	}
+
+	resp := s.handleRequest(req)
+	if resp == nil {
+		// Notification or response — no reply needed per spec
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	data, _ := json.Marshal(resp)
+	w.Write(data)
+}
+
+// handleRequest processes a JSON-RPC request and returns a response.
+// Returns nil for notifications (no response needed).
+func (s *Server) handleRequest(req jsonRPCRequest) *jsonRPCResponse {
 	switch req.Method {
 	case "initialize":
-		s.writeResult(req.ID, initializeResult{
+		return s.makeResult(req.ID, initializeResult{
 			ProtocolVersion: "2024-11-05",
 			ServerInfo: serverInfo{
 				Name:    s.name,
@@ -174,63 +235,69 @@ func (s *Server) handleRequest(req jsonRPCRequest) {
 
 	case "notifications/initialized":
 		// No response needed for notifications
+		return nil
 
 	case "tools/list":
 		var defs []toolDefinition
 		for _, t := range s.tools {
 			defs = append(defs, t.Definition)
 		}
-		s.writeResult(req.ID, toolsListResult{Tools: defs})
+		return s.makeResult(req.ID, toolsListResult{Tools: defs})
 
 	case "tools/call":
 		var params toolsCallParams
 		if err := json.Unmarshal(req.Params, &params); err != nil {
-			s.writeError(req.ID, -32602, "Invalid params")
-			return
+			return s.makeError(req.ID, -32602, "Invalid params")
 		}
 
 		t, ok := s.tools[params.Name]
 		if !ok {
-			s.writeError(req.ID, -32601, fmt.Sprintf("Unknown tool: %s", params.Name))
-			return
+			return s.makeError(req.ID, -32601, fmt.Sprintf("Unknown tool: %s", params.Name))
 		}
 
 		result, err := t.Handler(params.Arguments)
 		if err != nil {
-			s.writeResult(req.ID, toolResult{
+			return s.makeResult(req.ID, toolResult{
 				Content: []toolContent{{Type: "text", Text: fmt.Sprintf("Error: %s", err)}},
 				IsError: true,
 			})
-			return
 		}
 
-		s.writeResult(req.ID, toolResult{
+		return s.makeResult(req.ID, toolResult{
 			Content: []toolContent{{Type: "text", Text: result}},
 		})
 
 	default:
 		if req.ID != nil {
-			s.writeError(req.ID, -32601, fmt.Sprintf("Method not found: %s", req.Method))
+			return s.makeError(req.ID, -32601, fmt.Sprintf("Method not found: %s", req.Method))
 		}
+		return nil
 	}
 }
 
-func (s *Server) writeResult(id json.RawMessage, result interface{}) {
-	resp := jsonRPCResponse{
+// makeResult builds a successful JSON-RPC response.
+func (s *Server) makeResult(id json.RawMessage, result interface{}) *jsonRPCResponse {
+	return &jsonRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Result:  result,
 	}
-	data, _ := json.Marshal(resp)
-	fmt.Fprintln(os.Stdout, string(data))
 }
 
-func (s *Server) writeError(id json.RawMessage, code int, message string) {
-	resp := jsonRPCResponse{
+// makeError builds a JSON-RPC error response.
+func (s *Server) makeError(id json.RawMessage, code int, message string) *jsonRPCResponse {
+	return &jsonRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Error:   &rpcError{Code: code, Message: message},
 	}
-	data, _ := json.Marshal(resp)
-	fmt.Fprintln(os.Stdout, string(data))
+}
+
+// isLoopback returns true if the IP string is a loopback address.
+func isLoopback(host string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return host == "localhost"
+	}
+	return ip.IsLoopback()
 }
