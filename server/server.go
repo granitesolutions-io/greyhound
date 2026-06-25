@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// InfoHandler returns a handler that responds with {"name":"…","version":"…"}.
+func InfoHandler(name, version string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		JSON(w, http.StatusOK, map[string]string{"name": name, "version": version})
+	}
+}
+
 // HealthHandler responds with {"status":"ok"}.
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
