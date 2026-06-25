@@ -86,16 +86,17 @@ func WithNamespace(ns string) Option {
 	return func(c *Client) { c.namespace = ns }
 }
 
-// Connect creates a registry client for the given environment.
+// Connect creates a registry client for the given service and environment.
+// The service name is used as the registry namespace (e.g. "library"),
+// so namespace-scoped values override globals automatically.
 // "dev" connects to registry.granitesolutions.dev and "prod" (or
 // "production") connects to registry.granitesolutions.io.  If
 // registryURL is non-empty it overrides the environment-based URL.
-// The environment defaults to "dev" when empty.
-func Connect(environment, registryURL string, opts ...Option) (*Client, error) {
+func Connect(service, environment, registryURL string, opts ...Option) (*Client, error) {
 	if registryURL == "" {
 		registryURL = RegistryURL(environment)
 	}
-	return New(registryURL, opts...)
+	return New(registryURL, append(opts, WithNamespace(service))...)
 }
 
 // RegistryURL returns the registry base URL for the given environment.
@@ -242,17 +243,21 @@ func (c *Client) Close() {
 // --- HTTP fetch ---
 
 func (c *Client) fetch(key, format string) (*Entry, error) {
-	u := c.baseURL + "/api/setting/" + key
+	params := url.Values{}
 	if format != "" {
-		u += "?format=" + url.QueryEscape(format)
+		params.Set("format", format)
+	}
+	if c.namespace != "" {
+		params.Set("namespace", c.namespace)
+	}
+	u := c.baseURL + "/api/setting/" + key
+	if q := params.Encode(); q != "" {
+		u += "?" + q
 	}
 
 	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
 		return nil, err
-	}
-	if c.namespace != "" {
-		req.Header.Set("X-Namespace", c.namespace)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
