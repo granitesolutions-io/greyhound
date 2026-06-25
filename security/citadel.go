@@ -55,6 +55,10 @@ type citadelClaims struct {
 	Email   string `json:"email"`
 	Name    string `json:"name"`
 	Issuer  string `json:"iss"`
+	Account struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"account"`
 }
 
 // Verify calls Citadel's /api/tokens/verify endpoint to validate the token.
@@ -84,10 +88,17 @@ func (c *Citadel) Verify(token string) (*Claims, error) {
 		return nil, fmt.Errorf("failed to decode claims: %w", err)
 	}
 
-	return &Claims{
+	claims := &Claims{
 		Subject: vc.Subject,
 		Email:   vc.Email,
 		Name:    vc.Name,
 		Issuer:  vc.Issuer,
-	}, nil
+	}
+	if vc.Account.ID != "" {
+		claims.Account = &Account{
+			ID:   vc.Account.ID,
+			Name: vc.Account.Name,
+		}
+	}
+	return claims, nil
 }

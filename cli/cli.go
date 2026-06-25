@@ -14,7 +14,7 @@ var IsTTY = isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdo
 
 // Color palette — Primary can be overridden with SetPrimaryColor before any output.
 var (
-	Primary    = lipgloss.Color("#4285F4")
+	Primary    = lipgloss.Color("#3A7CA5")
 	Secondary  = lipgloss.Color("#34A853")
 	Success    = lipgloss.Color("#27C93F")
 	Warning    = lipgloss.Color("#F97316")
