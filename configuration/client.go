@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -85,6 +86,31 @@ func WithNamespace(ns string) Option {
 	return func(c *Client) { c.namespace = ns }
 }
 
+// Connect creates a registry client for the given environment.
+// "dev" connects to registry.granitesolutions.dev and "prod" (or
+// "production") connects to registry.granitesolutions.io.  If
+// registryURL is non-empty it overrides the environment-based URL.
+// The environment defaults to "dev" when empty.
+func Connect(environment, registryURL string, opts ...Option) (*Client, error) {
+	if registryURL == "" {
+		registryURL = RegistryURL(environment)
+	}
+	return New(registryURL, opts...)
+}
+
+// RegistryURL returns the registry base URL for the given environment.
+// "prod" and "production" resolve to registry.granitesolutions.io;
+// everything else (including empty string) resolves to
+// registry.granitesolutions.dev.
+func RegistryURL(environment string) string {
+	switch strings.ToLower(strings.TrimSpace(environment)) {
+	case "prod", "production":
+		return "https://registry.granitesolutions.io"
+	default:
+		return "https://registry.granitesolutions.dev"
+	}
+}
+
 // New creates a new registry client and connects to the WebSocket for updates.
 func New(baseURL string, opts ...Option) (*Client, error) {
 	c := &Client{
@@ -153,6 +179,41 @@ func (c *Client) GetOrDefault(key, defaultValue string, format ...string) string
 		return defaultValue
 	}
 	return value
+}
+
+// Resolve returns the first non-empty value from, in priority order:
+// CLI flag, environment variable, registry key, or the default value.
+// The environment variable name is derived from the registry key by
+// replacing dots and hyphens with underscores and uppercasing
+// (e.g. "s3.access-key" becomes "S3_ACCESS_KEY").
+// It is safe to call on a nil receiver; in that case the registry
+// lookup is skipped.
+func (c *Client) Resolve(key, flag, defaultValue string) string {
+	return c.ResolveEnv(key, keyToEnvVar(key), flag, defaultValue)
+}
+
+// ResolveEnv is like Resolve but takes an explicit environment variable
+// name for cases where the automatic conversion is not appropriate.
+func (c *Client) ResolveEnv(key, envVar, flag, defaultValue string) string {
+	if flag != "" {
+		return flag
+	}
+	if v := os.Getenv(envVar); v != "" {
+		return v
+	}
+	if c != nil {
+		if v := c.GetOrDefault(key, ""); v != "" {
+			return v
+		}
+	}
+	return defaultValue
+}
+
+// keyToEnvVar converts a dot/hyphen-separated registry key to
+// UPPER_SNAKE_CASE (e.g. "s3.access-key" → "S3_ACCESS_KEY").
+func keyToEnvVar(key string) string {
+	r := strings.NewReplacer(".", "_", "-", "_")
+	return strings.ToUpper(r.Replace(key))
 }
 
 // OnChange registers a callback that fires when a key's value changes.

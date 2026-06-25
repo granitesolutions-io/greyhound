@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -22,19 +23,32 @@ type App struct {
 	Version string // version string, e.g. "1.2.3"
 	Banner  string // ASCII art banner text
 	Color   string // optional primary color override (e.g. "#6366F1")
+
+	initOnce sync.Once
+}
+
+// New creates a new App and immediately initializes it (prints the
+// startup banner and configures logging).  Services that embed App
+// can call New so the banner appears before any configuration output.
+func New(name, version, banner string) *App {
+	a := &App{Name: name, Version: version, Banner: banner}
+	a.Init()
+	return a
 }
 
 // Init sets up structured logging and prints the startup header.
-// Call this at the beginning of your server's Start function.
+// It is safe to call multiple times; only the first call takes effect.
 func (a *App) Init() {
-	log.SetFlags(0)
-	log.SetOutput(timestampWriter{})
+	a.initOnce.Do(func() {
+		log.SetFlags(0)
+		log.SetOutput(timestampWriter{})
 
-	if a.Color != "" {
-		cli.SetPrimaryColor(a.Color)
-	}
+		if a.Color != "" {
+			cli.SetPrimaryColor(a.Color)
+		}
 
-	cli.PrintHeader(a.Banner, a.Version)
+		cli.PrintHeader(a.Banner, a.Version)
+	})
 }
 
 // ListenAndWait starts an HTTP server on the given port, prints ready messages,
