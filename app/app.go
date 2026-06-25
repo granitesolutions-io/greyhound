@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/granitesolutions-io/greyhound/ui"
+	"github.com/granitesolutions-io/greyhound/cli"
 )
 
 // App holds the identity and lifecycle for a greyhound-based service.
@@ -31,10 +31,10 @@ func (a *App) Init() {
 	log.SetOutput(timestampWriter{})
 
 	if a.Color != "" {
-		ui.SetPrimaryColor(a.Color)
+		cli.SetPrimaryColor(a.Color)
 	}
 
-	ui.PrintHeader(a.Banner, a.Version)
+	cli.PrintHeader(a.Banner, a.Version)
 }
 
 // ListenAndWait starts an HTTP server on the given port, prints ready messages,
@@ -43,7 +43,7 @@ func (a *App) Init() {
 func (a *App) ListenAndWait(port int, handler http.Handler, cleanup ...func()) {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		ui.PrintError("Failed to bind port %d: %s", port, err)
+		cli.PrintError("Failed to bind port %d: %s", port, err)
 		os.Exit(1)
 	}
 
@@ -55,8 +55,8 @@ func (a *App) ListenAndWait(port int, handler http.Handler, cleanup ...func()) {
 		}
 	}()
 
-	ui.PrintSuccess("Started http server on port %d.", port)
-	ui.PrintSuccess("%s v%s is ready!", a.Name, a.Version)
+	cli.PrintSuccess("Started http server on port %d.", port)
+	cli.PrintSuccess("%s v%s is ready!", a.Name, a.Version)
 	fmt.Println()
 
 	// Block until shutdown signal
