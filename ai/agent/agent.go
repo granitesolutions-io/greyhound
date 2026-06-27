@@ -48,6 +48,10 @@ type Agent struct {
 	// OnEvent is called for each streaming event from Claude CLI.
 	// If nil, events are silently consumed.
 	OnEvent func(Event)
+
+	// OnComplete is called after a successful Run() with the final result.
+	// Use this for post-processing such as billing or logging.
+	OnComplete func(*Result)
 }
 
 // HistoryProvider loads conversation history on demand.
@@ -114,8 +118,13 @@ func (a *Agent) Run(prompt string) (*Result, error) {
 				retryPrompt = "Here is the conversation so far:\n\n" + history + "Now continue the conversation. " + prompt
 			}
 		}
-		return a.run(retryPrompt, "")
+		result, err = a.run(retryPrompt, "")
 	}
+
+	if err == nil && result != nil && a.OnComplete != nil {
+		a.OnComplete(result)
+	}
+
 	return result, err
 }
 
