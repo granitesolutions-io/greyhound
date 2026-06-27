@@ -50,15 +50,15 @@ func Connect(service, environment, tariffURL string) (*Client, error) {
 	return c, nil
 }
 
-// TariffURL returns the tariff base URL for the given environment.
-// "prod" and "production" resolve to tariff.granitesolutions.io;
-// everything else (including empty string) resolves to tariff.granitesolutions.dev.
+// TariffURL returns the billing base URL for the given environment.
+// "prod" and "production" resolve to billing.granitesolutions.io;
+// everything else (including empty string) resolves to billing.granitesolutions.dev.
 func TariffURL(environment string) string {
 	switch strings.ToLower(strings.TrimSpace(environment)) {
 	case "prod", "production":
-		return "https://tariff.granitesolutions.io"
+		return "https://billing.granitesolutions.io"
 	default:
-		return "https://tariff.granitesolutions.dev"
+		return "https://billing.granitesolutions.dev"
 	}
 }
 
