@@ -1,4 +1,4 @@
-package configuration
+package security
 
 import (
 	"crypto/hmac"
@@ -10,9 +10,9 @@ import (
 )
 
 // signingKey is the shared HMAC key used to authenticate service-to-service
-// requests to the registry.  It is baked into the library so that any service
-// built with greyhound is automatically trusted — similar to how an SSL root
-// certificate is distributed with the OS.
+// requests.  It is baked into the library so that any service built with
+// greyhound is automatically trusted — similar to how an SSL root certificate
+// is distributed with the OS.
 var signingKey = []byte("gs:7f3a9c1e-4b2d-8e6f-a5d0-3c7b9e1f2a4d")
 
 // maxSkew is the maximum allowed difference between the request timestamp

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/granitesolutions-io/greyhound/security"
 	"github.com/gorilla/websocket"
 )
 
@@ -263,7 +264,7 @@ func (c *Client) fetch(key, format string) (*Entry, error) {
 	// Sign the request so the registry can verify it came from a trusted service.
 	ts := time.Now().Unix()
 	req.Header.Set("X-Timestamp", fmt.Sprintf("%d", ts))
-	req.Header.Set("X-Signature", Sign("GET", req.URL.Path, ts))
+	req.Header.Set("X-Signature", security.Sign("GET", req.URL.Path, ts))
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

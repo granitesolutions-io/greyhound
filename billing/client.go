@@ -9,13 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/granitesolutions-io/greyhound/configuration"
+	"github.com/granitesolutions-io/greyhound/security"
 )
 
 // UsageEvent represents a single usage record to send to tariff.
 type UsageEvent struct {
 	CustomerID   string          `json:"customerId"`
 	ServiceKey   string          `json:"serviceKey"`
+	Source       string          `json:"source,omitempty"`
 	Quantity     float64         `json:"quantity"`
 	Unit         string          `json:"unit"`
 	ProviderCost float64         `json:"providerCost,omitempty"`
@@ -70,9 +71,12 @@ func (c *Client) Record(event UsageEvent) {
 		return
 	}
 
-	// Apply default service key if the event doesn't specify one.
+	// Apply defaults from the client's service name.
 	if event.ServiceKey == "" {
 		event.ServiceKey = c.service
+	}
+	if event.Source == "" {
+		event.Source = c.service
 	}
 
 	select {
@@ -129,10 +133,10 @@ func (c *Client) post(event UsageEvent) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	// Sign the request identically to configuration.Client.fetch().
+	// Sign the request for service-to-service authentication.
 	ts := time.Now().Unix()
 	req.Header.Set("X-Timestamp", fmt.Sprintf("%d", ts))
-	req.Header.Set("X-Signature", configuration.Sign("POST", path, ts))
+	req.Header.Set("X-Signature", security.Sign("POST", path, ts))
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
